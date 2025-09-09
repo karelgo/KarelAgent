@@ -1,0 +1,31 @@
+# Core LangChain and AI dependencies
+langchain>=0.1.0
+langchain-openai>=0.0.5
+langchain-anthropic>=0.1.0  # Optional: for Anthropic Claude support
+langchain-core>=0.1.0
+
+# OpenAI (primary LLM provider)
+openai>=1.0.0
+
+# dbt and data build dependencies
+dbt-core>=1.6.0
+dbt-postgres>=1.6.0  # Optional: PostgreSQL adapter
+dbt-snowflake>=1.6.0  # Optional: Snowflake adapter  
+dbt-bigquery>=1.6.0   # Optional: BigQuery adapter
+dbt-fabric>=1.6.0     # Optional: Microsoft Fabric adapter
+
+# Utility libraries
+pydantic>=2.0.0
+python-dotenv>=1.0.0  # For environment variable management
+click>=8.0.0          # For potential CLI interface
+
+# Development and testing (optional)
+pytest>=7.0.0
+pytest-cov>=4.0.0
+black>=23.0.0         # Code formatting
+flake8>=6.0.0         # Linting
+mypy>=1.0.0           # Type checking
+
+# Documentation (optional)
+mkdocs>=1.4.0
+mkdocs-material>=9.0.0
