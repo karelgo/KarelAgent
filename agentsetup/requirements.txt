@@ -2,3 +2,5 @@ langchain
 fastapi
 uvicorn
 pydantic
+streamlit
+requests

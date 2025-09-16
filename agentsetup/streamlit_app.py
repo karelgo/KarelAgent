@@ -1,9 +1,13 @@
 import streamlit as st
 import requests
+import os
 
 st.set_page_config(page_title="KarelAgent Data & Analytics Platform", page_icon="🤖", layout="centered")
 
 st.title("KarelAgent Data & Analytics Platform")
+
+# Get backend URL from environment variable or use default
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
 endpoints = [
     {"name": "Ingest", "path": "/ingest"},
@@ -22,13 +26,14 @@ if st.button("Send"):
     else:
         with st.spinner("Processing..."):
             try:
-                url = f"http://localhost:8000{selected['path']}"
+                url = f"{BACKEND_URL}{selected['path']}"
                 response = requests.post(url, json={"data": data_input})
                 response.raise_for_status()
                 result = response.json().get("result", "No result returned.")
                 st.success(result)
             except Exception as e:
                 st.error(f"Error: {e}")
+                st.info(f"Note: Make sure the backend service is running at {BACKEND_URL}")
 
 st.markdown("<hr />", unsafe_allow_html=True)
 st.caption("© 2025 KarelAgent Platform")
