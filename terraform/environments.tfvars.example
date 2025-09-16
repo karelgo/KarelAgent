@@ -1,0 +1,39 @@
+# Environment-specific configuration examples
+# Copy the appropriate section to terraform.tfvars based on your deployment environment
+
+# Development Environment
+# app_name = "karel-agent-dev-your-initials"
+# app_service_sku = "F1"  # Free tier
+# location = "East US"
+# enable_staging_slot = false
+# tags = {
+#   Environment = "Development"
+#   Project     = "KarelAgent"
+#   ManagedBy   = "Terraform"
+#   Owner       = "YourName"
+# }
+
+# Staging Environment  
+# app_name = "karel-agent-staging-your-initials"
+# app_service_sku = "B1"  # Basic tier
+# location = "East US"
+# enable_staging_slot = false
+# tags = {
+#   Environment = "Staging"
+#   Project     = "KarelAgent"
+#   ManagedBy   = "Terraform"
+#   Owner       = "YourName"
+# }
+
+# Production Environment
+# app_name = "karel-agent-prod-your-company"
+# app_service_sku = "P1v2"  # Premium tier
+# location = "East US"
+# enable_staging_slot = true
+# tags = {
+#   Environment = "Production"
+#   Project     = "KarelAgent"
+#   ManagedBy   = "Terraform"
+#   Owner       = "YourName"
+#   CostCenter  = "Engineering"
+# }
