@@ -1,0 +1,29 @@
+# Copy this file to terraform.tfvars and update the values according to your requirements
+
+# Required: Name of your Azure Web App (must be globally unique)
+app_name = "karel-agent-webapp-unique-name"
+
+# Optional: Azure region (default: "East US")
+# location = "East US"
+
+# Optional: Resource group name (default: "rg-karel-agent")
+# resource_group_name = "rg-karel-agent"
+
+# Optional: App Service Plan SKU (default: "B1")
+# For development/testing, you can use "F1" (free tier)
+# For production, consider "B1", "S1", "P1v2", etc.
+# app_service_sku = "B1"
+
+# Optional: Enable staging deployment slot (default: false)
+# enable_staging_slot = false
+
+# Optional: Custom tags
+# tags = {
+#   Environment = "Production"
+#   Project     = "KarelAgent"
+#   Owner       = "YourName"
+#   ManagedBy   = "Terraform"
+# }
+
+# Optional: Python version (default: "3.11")
+# python_version = "3.11"
