@@ -1,9 +1,13 @@
-name: Deploy Streamlit App to Azure Web App
+name: Deploy Application to Azure Web App
 
 on:
   push:
     branches:
       - main
+    paths-ignore:
+      - 'terraform/**'
+      - 'README.md'
+      - '.github/workflows/terraform-deploy.yml'
   workflow_dispatch:
 
 jobs:
@@ -41,6 +45,7 @@ jobs:
   deploy:
     needs: build-and-test
     runs-on: ubuntu-latest
+    environment: 'production'  # Manual approval required
     
     steps:
     - name: Checkout code
@@ -56,11 +61,45 @@ jobs:
         python -m pip install --upgrade pip
         cd agentsetup
         pip install -r requirements.txt
-        
-    - name: Deploy to Azure Web App
+
+    # Option 1: Deploy using publish profile (legacy method)
+    - name: Deploy to Azure Web App (Publish Profile)
+      if: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
       uses: azure/webapps-deploy@v2
       with:
         app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
         publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
         package: './agentsetup'
         startup-command: 'streamlit run streamlit_app.py --server.port 8000 --server.address 0.0.0.0 --server.headless true'
+
+    # Option 2: Deploy using Service Principal (recommended for Terraform-managed resources)
+    - name: Configure Azure credentials
+      if: ${{ !secrets.AZURE_WEBAPP_PUBLISH_PROFILE && secrets.AZURE_CLIENT_ID }}
+      uses: azure/login@v1
+      with:
+        creds: |
+          {
+            "clientId": "${{ secrets.AZURE_CLIENT_ID }}",
+            "clientSecret": "${{ secrets.AZURE_CLIENT_SECRET }}",
+            "subscriptionId": "${{ secrets.AZURE_SUBSCRIPTION_ID }}",
+            "tenantId": "${{ secrets.AZURE_TENANT_ID }}"
+          }
+
+    - name: Deploy to Azure Web App (Service Principal)
+      if: ${{ !secrets.AZURE_WEBAPP_PUBLISH_PROFILE && secrets.AZURE_CLIENT_ID }}
+      uses: azure/webapps-deploy@v2
+      with:
+        app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
+        package: './agentsetup'
+        startup-command: 'streamlit run streamlit_app.py --server.port 8000 --server.address 0.0.0.0 --server.headless true'
+
+    - name: Application deployment summary
+      run: |
+        echo "## 🚀 Application Deployment Completed!" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 📋 Deployment Details" >> $GITHUB_STEP_SUMMARY
+        echo "- **Web App Name**: ${{ secrets.AZURE_WEBAPP_NAME }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Web App URL**: https://${{ secrets.AZURE_WEBAPP_NAME }}.azurewebsites.net" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🔗 Access Your Application" >> $GITHUB_STEP_SUMMARY
+        echo "Your KarelAgent application is now live at: **https://${{ secrets.AZURE_WEBAPP_NAME }}.azurewebsites.net**" >> $GITHUB_STEP_SUMMARY
