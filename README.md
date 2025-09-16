@@ -47,9 +47,15 @@ Configure the following secrets in your GitHub repository (Settings → Secrets 
 
 You can create the required Azure Service Principal using either the automated GitHub Actions workflow (recommended) or manually using the Azure CLI.
 
+> **Note**: The service principal will be created with the pre-configured Azure subscription ID: `4910a5a6-aec6-405d-9294-c7f2845512a4`
+
 ##### Option A: Automated Service Principal Creation (Recommended)
 
-1. **Trigger the Workflow:**
+1. **Prerequisites:**
+   - You must have existing Azure credentials configured as GitHub Secrets (if you don't have them yet, use Option B first)
+   - You need write access to the repository to run workflows
+
+2. **Trigger the Workflow:**
    - Go to your GitHub repository
    - Navigate to **Actions** → **Create Azure Service Principal**
    - Click **Run workflow**
@@ -114,6 +120,28 @@ You can create the required Azure Service Principal using either the automated G
 3. **Manual Approval:** The workflow requires manual approval before applying changes to protect against accidental modifications.
 
 4. **Access Your Application:** After successful deployment, your app will be available at the URL shown in the workflow output.
+
+#### Troubleshooting Service Principal Setup
+
+**Common Issues:**
+
+1. **Workflow fails with authentication error:**
+   - Ensure you have existing Azure credentials as GitHub Secrets
+   - For first-time setup, use Option B (manual creation) to bootstrap the initial credentials
+
+2. **Permission denied errors:**
+   - Verify you have sufficient permissions in the Azure subscription
+   - Check that you're logged into the correct Azure account (`az account show`)
+
+3. **Service principal already exists:**
+   - The workflow will automatically reset credentials for existing service principals
+   - You can also manually delete the existing SP in Azure Portal and re-run the workflow
+
+4. **Secrets update fails:**
+   - Ensure the GitHub token has proper permissions
+   - Try running the workflow with "update_secrets" set to false and manually configure secrets
+
+**For additional help:** Check the GitHub Actions workflow logs for detailed error messages and troubleshooting information.
 
 ### Option 2: Manual Azure Resource Setup (Legacy)
 
