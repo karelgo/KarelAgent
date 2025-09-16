@@ -45,6 +45,34 @@ Configure the following secrets in your GitHub repository (Settings → Secrets 
 
 #### Setting up Azure Service Principal
 
+You can create the required Azure Service Principal using either the automated GitHub Actions workflow (recommended) or manually using the Azure CLI.
+
+> **Note**: The service principal will be created with the pre-configured Azure subscription ID: `4910a5a6-aec6-405d-9294-c7f2845512a4`
+
+##### Option A: Automated Service Principal Creation (Recommended)
+
+1. **Prerequisites:**
+   - You must have existing Azure credentials configured as GitHub Secrets (if you don't have them yet, use Option B first)
+   - You need write access to the repository to run workflows
+
+2. **Trigger the Workflow:**
+   - Go to your GitHub repository
+   - Navigate to **Actions** → **Create Azure Service Principal**
+   - Click **Run workflow**
+   - Optionally customize the service principal name
+   - Choose whether to automatically update GitHub secrets (recommended)
+
+2. **Manual Approval:**
+   - The workflow requires manual approval for security
+   - Review the workflow details and approve the run
+
+3. **Automatic Configuration:**
+   - The workflow will create the service principal with the pre-configured subscription ID
+   - GitHub secrets will be automatically updated (if enabled)
+   - All credentials will be securely stored
+
+##### Option B: Manual Service Principal Creation
+
 1. **Install Azure CLI** (if not already installed):
    ```bash
    # On macOS
@@ -59,20 +87,29 @@ Configure the following secrets in your GitHub repository (Settings → Secrets 
    az login
    ```
 
-3. **Create a Service Principal:**
+3. **Run the provided script:**
    ```bash
-   # Replace 'your-subscription-id' with your actual subscription ID
-   az ad sp create-for-rbac --name "terraform-github-actions" \
-     --role="Contributor" \
-     --scopes="/subscriptions/your-subscription-id" \
-     --sdk-auth
+   # Execute the service principal creation script
+   ./scripts/create-service-principal.sh
    ```
 
-4. **Copy the output JSON** and extract the following values for GitHub Secrets:
-   - `clientId` → `AZURE_CLIENT_ID`
-   - `clientSecret` → `AZURE_CLIENT_SECRET`
-   - `subscriptionId` → `AZURE_SUBSCRIPTION_ID`
-   - `tenantId` → `AZURE_TENANT_ID`
+   Or create manually:
+   ```bash
+   # Create service principal with the configured subscription ID
+   az ad sp create-for-rbac --name "karelAgent-github-actions" \
+     --role="Contributor" \
+     --scopes="/subscriptions/4910a5a6-aec6-405d-9294-c7f2845512a4" \
+     --query '{appId:appId, password:password, tenant:tenant}' \
+     --output json
+   ```
+
+4. **Configure GitHub Secrets:**
+   - Go to repository Settings → Secrets and variables → Actions
+   - Add the following secrets:
+     - `AZURE_CLIENT_ID` → Application (client) ID from the output
+     - `AZURE_CLIENT_SECRET` → Password from the output
+     - `AZURE_SUBSCRIPTION_ID` → `4910a5a6-aec6-405d-9294-c7f2845512a4`
+     - `AZURE_TENANT_ID` → Tenant ID from the output
 
 #### Using Terraform
 
@@ -83,6 +120,28 @@ Configure the following secrets in your GitHub repository (Settings → Secrets 
 3. **Manual Approval:** The workflow requires manual approval before applying changes to protect against accidental modifications.
 
 4. **Access Your Application:** After successful deployment, your app will be available at the URL shown in the workflow output.
+
+#### Troubleshooting Service Principal Setup
+
+**Common Issues:**
+
+1. **Workflow fails with authentication error:**
+   - Ensure you have existing Azure credentials as GitHub Secrets
+   - For first-time setup, use Option B (manual creation) to bootstrap the initial credentials
+
+2. **Permission denied errors:**
+   - Verify you have sufficient permissions in the Azure subscription
+   - Check that you're logged into the correct Azure account (`az account show`)
+
+3. **Service principal already exists:**
+   - The workflow will automatically reset credentials for existing service principals
+   - You can also manually delete the existing SP in Azure Portal and re-run the workflow
+
+4. **Secrets update fails:**
+   - Ensure the GitHub token has proper permissions
+   - Try running the workflow with "update_secrets" set to false and manually configure secrets
+
+**For additional help:** Check the GitHub Actions workflow logs for detailed error messages and troubleshooting information.
 
 ### Option 2: Manual Azure Resource Setup (Legacy)
 
