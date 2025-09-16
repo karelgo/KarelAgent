@@ -1,0 +1,234 @@
+name: Create Azure Service Principal
+
+on:
+  workflow_dispatch:
+    inputs:
+      service_principal_name:
+        description: 'Name for the service principal (optional, defaults to karelAgent-github-actions)'
+        required: false
+        default: 'karelAgent-github-actions'
+        type: string
+      update_secrets:
+        description: 'Automatically update GitHub secrets with new credentials'
+        required: false
+        default: true
+        type: boolean
+
+env:
+  SUBSCRIPTION_ID: '4910a5a6-aec6-405d-9294-c7f2845512a4'
+
+jobs:
+  create-service-principal:
+    name: 'Create Azure Service Principal'
+    runs-on: ubuntu-latest
+    environment: 'production'  # Requires manual approval for security
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Validate inputs
+      run: |
+        echo "🔍 Validating workflow inputs..."
+        echo "Service Principal Name: ${{ github.event.inputs.service_principal_name || 'karelAgent-github-actions' }}"
+        echo "Update GitHub Secrets: ${{ github.event.inputs.update_secrets || 'true' }}"
+        echo "Subscription ID: ${{ env.SUBSCRIPTION_ID }}"
+
+    - name: Azure CLI Login
+      uses: azure/login@v1
+      with:
+        creds: |
+          {
+            "clientId": "${{ secrets.AZURE_CLIENT_ID }}",
+            "clientSecret": "${{ secrets.AZURE_CLIENT_SECRET }}",
+            "subscriptionId": "${{ secrets.AZURE_SUBSCRIPTION_ID }}",
+            "tenantId": "${{ secrets.AZURE_TENANT_ID }}"
+          }
+
+    - name: Install jq
+      run: sudo apt-get update && sudo apt-get install -y jq
+
+    - name: Create Service Principal
+      id: create-sp
+      run: |
+        SP_NAME="${{ github.event.inputs.service_principal_name || 'karelAgent-github-actions' }}"
+        
+        echo "🔐 Creating Azure Service Principal..."
+        echo "📋 Configuration:"
+        echo "  - Subscription ID: ${{ env.SUBSCRIPTION_ID }}"
+        echo "  - Service Principal Name: $SP_NAME"
+        echo "  - Role: Contributor"
+        echo
+        
+        # Set the subscription
+        echo "🎯 Setting Azure subscription..."
+        az account set --subscription "${{ env.SUBSCRIPTION_ID }}"
+        
+        # Verify subscription access
+        CURRENT_SUB=$(az account show --query id -o tsv)
+        if [ "$CURRENT_SUB" != "${{ env.SUBSCRIPTION_ID }}" ]; then
+            echo "❌ Error: Cannot access subscription ${{ env.SUBSCRIPTION_ID }}"
+            echo "Current subscription: $CURRENT_SUB"
+            exit 1
+        fi
+        
+        echo "✅ Successfully set subscription to: ${{ env.SUBSCRIPTION_ID }}"
+        
+        # Check if service principal already exists
+        EXISTING_SP=$(az ad sp list --display-name "$SP_NAME" --query '[0].appId' -o tsv)
+        if [ -n "$EXISTING_SP" ] && [ "$EXISTING_SP" != "null" ]; then
+            echo "⚠️  Service principal '$SP_NAME' already exists with App ID: $EXISTING_SP"
+            echo "🔄 Regenerating credentials for existing service principal..."
+            
+            # Reset credentials for existing SP
+            SP_OUTPUT=$(az ad sp credential reset --id "$EXISTING_SP" --query '{appId:appId, password:password}' -o json)
+            TENANT_ID=$(az account show --query tenantId -o tsv)
+            
+            # Combine the outputs
+            COMBINED_OUTPUT=$(echo "$SP_OUTPUT" | jq --arg tenant "$TENANT_ID" '. + {tenant: $tenant}')
+        else
+            echo "👤 Creating new service principal..."
+            # Create service principal
+            COMBINED_OUTPUT=$(az ad sp create-for-rbac \
+                --name "$SP_NAME" \
+                --role "Contributor" \
+                --scopes "/subscriptions/${{ env.SUBSCRIPTION_ID }}" \
+                --query '{appId:appId, password:password, tenant:tenant}' \
+                --output json)
+        fi
+        
+        if [ $? -ne 0 ]; then
+            echo "❌ Error: Failed to create/update service principal"
+            exit 1
+        fi
+        
+        echo "✅ Service principal operation completed successfully!"
+        
+        # Extract credentials
+        APP_ID=$(echo "$COMBINED_OUTPUT" | jq -r '.appId')
+        PASSWORD=$(echo "$COMBINED_OUTPUT" | jq -r '.password')
+        TENANT_ID=$(echo "$COMBINED_OUTPUT" | jq -r '.tenant')
+        
+        # Mask sensitive outputs
+        echo "::add-mask::$PASSWORD"
+        
+        # Set outputs for next steps
+        echo "app_id=$APP_ID" >> $GITHUB_OUTPUT
+        echo "password=$PASSWORD" >> $GITHUB_OUTPUT
+        echo "tenant_id=$TENANT_ID" >> $GITHUB_OUTPUT
+        echo "subscription_id=${{ env.SUBSCRIPTION_ID }}" >> $GITHUB_OUTPUT
+        
+        # Display non-sensitive results
+        echo "🔑 Service Principal Details:"
+        echo "=============================================="
+        echo "Service Principal Name: $SP_NAME"
+        echo "Application ID (Client ID): $APP_ID"
+        echo "Tenant ID: $TENANT_ID"
+        echo "Subscription ID: ${{ env.SUBSCRIPTION_ID }}"
+        echo "Role: Contributor"
+        echo "=============================================="
+
+    - name: Update GitHub Secrets
+      if: github.event.inputs.update_secrets != 'false'
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          const sodium = require('sodium-native');
+          
+          // Get repository public key for encrypting secrets
+          const { data: publicKey } = await github.rest.actions.getRepoPublicKey({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+          });
+          
+          // Function to encrypt secret
+          function encryptSecret(secret) {
+            const key = Buffer.from(publicKey.key, 'base64');
+            const encrypted = Buffer.alloc(48 + secret.length);
+            const nonce = encrypted.subarray(0, 48);
+            sodium.randombytes_buf(nonce);
+            sodium.crypto_box_seal(encrypted.subarray(48), Buffer.from(secret), key);
+            return encrypted.toString('base64');
+          }
+          
+          // Update secrets
+          const secrets = {
+            'AZURE_CLIENT_ID': '${{ steps.create-sp.outputs.app_id }}',
+            'AZURE_CLIENT_SECRET': '${{ steps.create-sp.outputs.password }}',
+            'AZURE_SUBSCRIPTION_ID': '${{ steps.create-sp.outputs.subscription_id }}',
+            'AZURE_TENANT_ID': '${{ steps.create-sp.outputs.tenant_id }}'
+          };
+          
+          console.log('📝 Updating GitHub Secrets...');
+          
+          for (const [secretName, secretValue] of Object.entries(secrets)) {
+            if (secretValue) {
+              try {
+                await github.rest.actions.createOrUpdateRepoSecret({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  secret_name: secretName,
+                  encrypted_value: encryptSecret(secretValue),
+                  key_id: publicKey.key_id,
+                });
+                console.log(`✅ Updated secret: ${secretName}`);
+              } catch (error) {
+                console.log(`❌ Failed to update secret ${secretName}: ${error.message}`);
+              }
+            }
+          }
+          
+          console.log('🎉 GitHub Secrets update completed!');
+
+    - name: Manual Secrets Instructions
+      if: github.event.inputs.update_secrets == 'false'
+      run: |
+        echo "📝 Manual GitHub Secrets Configuration:"
+        echo "=============================================="
+        echo "Since automatic secret updates were disabled, please manually configure these secrets:"
+        echo ""
+        echo "1. Go to your GitHub repository settings"
+        echo "2. Navigate to Settings → Secrets and variables → Actions"
+        echo "3. Add or update these repository secrets:"
+        echo ""
+        echo "AZURE_CLIENT_ID: ${{ steps.create-sp.outputs.app_id }}"
+        echo "AZURE_CLIENT_SECRET: [Use the masked value from the Create Service Principal step]"
+        echo "AZURE_SUBSCRIPTION_ID: ${{ steps.create-sp.outputs.subscription_id }}"
+        echo "AZURE_TENANT_ID: ${{ steps.create-sp.outputs.tenant_id }}"
+        echo "=============================================="
+
+    - name: Create Summary
+      run: |
+        echo "## 🔐 Azure Service Principal Created Successfully! 🎉" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 📋 Service Principal Details" >> $GITHUB_STEP_SUMMARY
+        echo "- **Name**: ${{ github.event.inputs.service_principal_name || 'karelAgent-github-actions' }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Application ID**: \`${{ steps.create-sp.outputs.app_id }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- **Tenant ID**: \`${{ steps.create-sp.outputs.tenant_id }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- **Subscription ID**: \`${{ steps.create-sp.outputs.subscription_id }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- **Role**: Contributor" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [ "${{ github.event.inputs.update_secrets }}" != "false" ]; then
+          echo "### ✅ GitHub Secrets Updated" >> $GITHUB_STEP_SUMMARY
+          echo "The following GitHub secrets have been automatically updated:" >> $GITHUB_STEP_SUMMARY
+          echo "- \`AZURE_CLIENT_ID\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`AZURE_CLIENT_SECRET\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`AZURE_SUBSCRIPTION_ID\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`AZURE_TENANT_ID\`" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "### 📝 Manual Secret Configuration Required" >> $GITHUB_STEP_SUMMARY
+          echo "Please manually configure the GitHub secrets as shown in the workflow logs." >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🚀 Next Steps" >> $GITHUB_STEP_SUMMARY
+        echo "1. Your service principal is ready for use in GitHub Actions workflows" >> $GITHUB_STEP_SUMMARY
+        echo "2. The existing Terraform and application deployment workflows can now use these credentials" >> $GITHUB_STEP_SUMMARY
+        echo "3. Ensure the \`AZURE_WEBAPP_NAME\` secret is also configured for deployment workflows" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### ⚠️ Security Reminders" >> $GITHUB_STEP_SUMMARY
+        echo "- Service principal credentials are stored securely as GitHub secrets" >> $GITHUB_STEP_SUMMARY
+        echo "- The client secret cannot be retrieved again - it's only available during creation" >> $GITHUB_STEP_SUMMARY
+        echo "- Regular rotation of credentials is recommended for security" >> $GITHUB_STEP_SUMMARY
