@@ -17,6 +17,9 @@ This project is an advanced data and analytics platform powered by LangChain age
 2. Run the platform using FastAPI.
 3. Interact with agents via API endpoints.
 
+## GitHub Pages
+- Visit our GitHub Pages site at: [KarelAgent GitHub Pages](https://karelgo.github.io/KarelAgent)
+
 ## Next Steps
 - Implement agent classes and orchestration logic.
 - Add inter-agent communication and CEO approval flow.
